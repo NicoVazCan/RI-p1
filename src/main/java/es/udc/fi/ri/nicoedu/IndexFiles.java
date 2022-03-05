@@ -31,9 +31,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.Date;
 
 /**
@@ -231,6 +233,50 @@ public class IndexFiles implements AutoCloseable {
 			// If that's not the case searching for special characters will fail.
 			doc.add(new TextField("contents",
 					new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))));
+
+			doc.add(new StoredField("contentsStored", stream.readAllBytes()));
+
+			doc.add(new StringField("hostname",
+					InetAddress.getLocalHost().getHostName(), Field.Store.YES));
+
+			doc.add(new StringField("thread",
+					Thread.currentThread().getName(), Field.Store.YES));
+
+			doc.add(new StringField("type",
+					Files.isRegularFile(file)? "regular file":
+					Files.isDirectory(file)? "directory":
+					Files.isSymbolicLink(file)? "symbolic link":
+							"otro"
+					, Field.Store.YES));
+
+			BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
+
+			doc.add(new LongPoint("sizeKb", attrs.size()));
+
+			FileTime creationTime = attrs.creationTime(),
+					lastAccessTime = attrs.lastAccessTime(),
+					lastModifiedTime = attrs.lastModifiedTime();
+
+			doc.add(new StringField("creationTime",
+					creationTime.toString(), Field.Store.YES));
+
+			doc.add(new StringField("lastAccessTime",
+					lastAccessTime.toString(), Field.Store.YES));
+
+			doc.add(new StringField("lastModifiedTime",
+					lastModifiedTime.toString(), Field.Store.YES));
+
+			doc.add(new StringField("creationTimeLucena",
+					DateTools.dateToString(new Date(creationTime.toMillis()),
+							DateTools.Resolution.MILLISECOND), Field.Store.YES));
+
+			doc.add(new StringField("lastAccessTimeLucena",
+					DateTools.dateToString(new Date(lastAccessTime.toMillis()),
+							DateTools.Resolution.MILLISECOND), Field.Store.YES));
+
+			doc.add(new StringField("lastModifiedTimeLucena",
+					DateTools.dateToString(new Date(lastModifiedTime.toMillis()),
+							DateTools.Resolution.MILLISECOND), Field.Store.YES));
 
 			if (demoEmbeddings != null) {
 				try (InputStream in = Files.newInputStream(file)) {
