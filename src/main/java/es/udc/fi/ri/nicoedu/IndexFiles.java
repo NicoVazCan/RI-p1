@@ -105,7 +105,8 @@ public class IndexFiles implements AutoCloseable {
 	/** Index all text files under a directory. */
 	public static void main(String[] args) throws Exception {
 		String usage = "java org.apache.lucene.demo.IndexFiles"
-				+ " [-index INDEX_PATH] [-docs DOCS_PATH] [-update] [-knn_dict DICT_PATH]\n\n"
+				+ " [-index INDEX_PATH] [-docs DOCS_PATH] [-update] [-knn_dict DICT_PATH] \n"
+				+ "[-openmode append|create|create_append] [-numThreads Nº] [-deep Nº] \n\n"
 				+ "This indexes the documents in DOCS_PATH, creating a Lucene index"
 				+ "in INDEX_PATH that can be searched with SearchFiles\n"
 				+ "IF DICT_PATH contains a KnnVector dictionary, the index will also support KnnVector search";
@@ -415,15 +416,15 @@ public class IndexFiles implements AutoCloseable {
 			doc.add(new StringField("lastModifiedTime",
 					lastModifiedTime.toString(), Field.Store.YES));
 
-			doc.add(new StringField("creationTimeLucena",
+			doc.add(new StringField("creationTimeLucene",
 					DateTools.dateToString(new Date(creationTime.toMillis()),
 							DateTools.Resolution.MILLISECOND), Field.Store.YES));
 
-			doc.add(new StringField("lastAccessTimeLucena",
+			doc.add(new StringField("lastAccessTimeLucene",
 					DateTools.dateToString(new Date(lastAccessTime.toMillis()),
 							DateTools.Resolution.MILLISECOND), Field.Store.YES));
 
-			doc.add(new StringField("lastModifiedTimeLucena",
+			doc.add(new StringField("lastModifiedTimeLucene",
 					DateTools.dateToString(new Date(lastModifiedTime.toMillis()),
 							DateTools.Resolution.MILLISECOND), Field.Store.YES));
 
