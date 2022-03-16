@@ -54,8 +54,16 @@ public class WriteIndex {
                 if(doc != null) {
                     for (IndexableField field : doc) {
                         output.println("\tCampo: " + field.name());
-                        if((fieldValue = field.stringValue()) != null) {
-                            output.println("\t\tContenido:");
+                        if(field.fieldType().stored()) {
+                            if (field.numericValue() != null) {
+                                fieldValue = String.valueOf(field.numericValue().floatValue());
+                            } else if (field.binaryValue() != null) {
+                                fieldValue = field.binaryValue().toString();
+                            } else {
+                                fieldValue = field.stringValue();
+                            }
+
+                            output.println("\t\tValor:");
                             output.println("\t\t" + fieldValue);
                         }
                     }

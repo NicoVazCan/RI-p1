@@ -354,7 +354,14 @@ public class IndexFiles implements AutoCloseable {
 			BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
 			doc.add(new TextField("contents", reader));
 
-			if(topLines != Integer.MAX_VALUE || bottonLines != Integer.MAX_VALUE) {
+			if (reader.markSupported()) {
+				reader.mark(0);
+				reader.reset();
+			} else {
+				throw new IOException();
+			}
+
+			if (topLines != Integer.MAX_VALUE || bottonLines != Integer.MAX_VALUE) {
 				String line = reader.readLine();
 				List<String> lines = new ArrayList<>();
 				String[] lastLines = new String[bottonLines];
@@ -400,8 +407,9 @@ public class IndexFiles implements AutoCloseable {
 					, Field.Store.YES));
 
 			BasicFileAttributes attrs = Files.readAttributes(file, BasicFileAttributes.class);
+			double size = ((double) attrs.size())/1000;
 
-			doc.add(new LongPoint("sizeKb", attrs.size()));
+			doc.add(new DoublePoint("sizeKb", size));
 
 			FileTime creationTime = attrs.creationTime(),
 					lastAccessTime = attrs.lastAccessTime(),
