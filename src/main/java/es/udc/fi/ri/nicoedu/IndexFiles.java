@@ -32,11 +32,15 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
-import java.util.Date;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Index all text files under a directory.
@@ -51,8 +55,44 @@ public class IndexFiles implements AutoCloseable {
 	// Calculates embedding vectors for KnnVector search
 	private final DemoEmbeddings demoEmbeddings;
 	private final KnnVectorDict vectorDict;
+	private final Properties fileProp = new Properties();
+
+	public static class WorkerThread implements Runnable {
+		private final IndexWriter writer;
+		private final IndexFiles indexFiles;
+		private final Path folder;
+		private final int maxDepth;
+
+		public WorkerThread(final IndexWriter writer,
+							final IndexFiles indexFiles,
+							final Path folder,
+							final int maxDepth) {
+			this.writer = writer;
+			this.indexFiles = indexFiles;
+			this.folder = folder;
+			this.maxDepth = maxDepth;
+		}
+
+		/**
+		 * This is the work that the current thread will do when processed by the pool.
+		 * In this case, it will only print some information.
+		 */
+		@Override
+		public void run() {
+			try {
+				indexFiles.indexDocs(writer, folder, maxDepth);
+			} catch (final IOException e) {
+				e.printStackTrace();
+				System.exit(-1);
+			}
+			System.out.println(String.format("I am the thread '%s' and I am responsible for folder '%s'",
+					Thread.currentThread().getName(), folder));
+		}
+	}
 
 	private IndexFiles(KnnVectorDict vectorDict) throws IOException {
+		fileProp.load(Files.newInputStream(
+				Path.of("src/main/resources/config.properties")));
 		if (vectorDict != null) {
 			this.vectorDict = vectorDict;
 			demoEmbeddings = new DemoEmbeddings(vectorDict);
@@ -72,26 +112,53 @@ public class IndexFiles implements AutoCloseable {
 		String indexPath = "index";
 		String docsPath = null;
 		String vectorDictSource = null;
-		boolean create = true;
+		IndexWriterConfig.OpenMode openMode = OpenMode.CREATE;
+		int numThreads = Runtime.getRuntime().availableProcessors();
+		boolean partialIndexes = false;
+		int maxDepth = Integer.MAX_VALUE;
 		for (int i = 0; i < args.length; i++) {
 			switch (args[i]) {
-			case "-index":
-				indexPath = args[++i];
-				break;
-			case "-docs":
-				docsPath = args[++i];
-				break;
-			case "-knn_dict":
-				vectorDictSource = args[++i];
-				break;
-			case "-update":
-				create = false;
-				break;
-			case "-create":
-				create = true;
-				break;
-			default:
-				throw new IllegalArgumentException("unknown parameter " + args[i]);
+				case "-index":
+					indexPath = args[++i];
+					break;
+				case "-docs":
+					docsPath = args[++i];
+					break;
+				case "-knn_dict":
+					vectorDictSource = args[++i];
+					break;
+				case "-update":
+					openMode = OpenMode.CREATE_OR_APPEND;
+					break;
+				case "-create":
+					openMode = OpenMode.CREATE;
+					break;
+				case "-openmode":
+					switch (args[++i]) {
+						case "append":
+							openMode = OpenMode.APPEND;
+							break;
+						case "create":
+							openMode = OpenMode.CREATE;
+							break;
+						case "create_or_append":
+							openMode = OpenMode.CREATE_OR_APPEND;
+							break;
+						default:
+							throw new IllegalArgumentException("unknown parameter " + args[i]);
+					}
+					break;
+				case "-numThreads":
+					numThreads = Integer.parseInt(args[++i]);
+					break;
+				case "-partialIndexes":
+					partialIndexes = true;
+					break;
+				case "-deep":
+					maxDepth = Integer.parseInt(args[++i]);
+					break;
+				default:
+					throw new IllegalArgumentException("unknown parameter " + args[i]);
 			}
 		}
 
@@ -111,18 +178,11 @@ public class IndexFiles implements AutoCloseable {
 		try {
 			System.out.println("Indexing to directory '" + indexPath + "'...");
 
-			Directory dir = FSDirectory.open(Paths.get(indexPath));
+			Path indexDir = Paths.get(indexPath);
+			Directory dir = FSDirectory.open(indexDir);
 			Analyzer analyzer = new StandardAnalyzer();
 			IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
-
-			if (create) {
-				// Create a new index in the directory, removing any
-				// previously indexed documents:
-				iwc.setOpenMode(OpenMode.CREATE);
-			} else {
-				// Add new documents to an existing index:
-				iwc.setOpenMode(OpenMode.CREATE_OR_APPEND);
-			}
+			iwc.setOpenMode(openMode);
 
 			// Optional: for better indexing performance, if you
 			// are indexing many documents, increase the RAM
@@ -139,17 +199,63 @@ public class IndexFiles implements AutoCloseable {
 				vectorDictSize = vectorDictInstance.ramBytesUsed();
 			}
 
-			try (IndexWriter writer = new IndexWriter(dir, iwc);
-					IndexFiles indexFiles = new IndexFiles(vectorDictInstance)) {
-				indexFiles.indexDocs(writer, docDir);
+			final ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+			final List<IndexWriter> subwriters = new ArrayList<>();
+			IndexWriter subwriter;
 
-				// NOTE: if you want to maximize search performance,
-				// you can optionally call forceMerge here. This can be
-				// a terribly costly operation, so generally it's only
-				// worth it when your index is relatively static (ie
-				// you're done adding documents to it):
-				//
-				// writer.forceMerge(1);
+			try (IndexWriter writer = new IndexWriter(dir, iwc);
+				IndexFiles indexFiles = new IndexFiles(vectorDictInstance);
+				DirectoryStream<Path> directoryStream = Files.newDirectoryStream(docDir)) {
+
+				for (final Path path : directoryStream) {
+					if (Files.isDirectory(path)) {
+						if(partialIndexes) {
+							Path subIndexDir = Path.of(indexDir.getParent().toString() + "/" +
+									path.toFile().getName());
+
+							if(!Files.exists(subIndexDir)) {
+								if(openMode == OpenMode.CREATE ||
+										openMode == OpenMode.CREATE_OR_APPEND) {
+									Files.createDirectory(subIndexDir);
+								} else {
+									throw new IOException();
+								}
+							}
+							Directory subdir = FSDirectory.open(subIndexDir);
+
+							subwriter = new IndexWriter(subdir,
+									new IndexWriterConfig(analyzer).setOpenMode(openMode));
+							subwriters.add(subwriter);
+						} else {
+							subwriter = writer;
+						}
+
+						executor.execute(new WorkerThread(subwriter, indexFiles, path, maxDepth));
+					}
+				}
+
+				executor.shutdown();
+				executor.awaitTermination(1, TimeUnit.HOURS);
+
+				if(partialIndexes) {
+					int dirs = subwriters.size();
+					IndexWriter subw;
+					Directory[] subdirectories = new Directory[dirs];
+
+					for (int i = 0; i < dirs; i++) {
+						subw = subwriters.get(i);
+						subdirectories[i] = subw.getDirectory();
+						subw.close();
+					}
+					writer.addIndexes(subdirectories);
+				}
+
+			} catch (final IOException e) {
+				e.printStackTrace();
+				System.exit(-1);
+			} catch (final InterruptedException e) {
+				e.printStackTrace();
+				System.exit(-2);
 			} finally {
 				IOUtils.close(vectorDictInstance);
 			}
@@ -186,13 +292,20 @@ public class IndexFiles implements AutoCloseable {
 	 *               files to indt
 	 * @throws IOException If there is a low-level I/O error
 	 */
-	void indexDocs(final IndexWriter writer, Path path) throws IOException {
+	void indexDocs(final IndexWriter writer, Path path, int maxDepth) throws IOException {
+		String aux = this.fileProp.getProperty("onlyFiles");
+		String[] onlyFiles = aux == null? null: aux.split(" ");
+
 		if (Files.isDirectory(path)) {
-			Files.walkFileTree(path, new SimpleFileVisitor<Path>() {
+			Files.walkFileTree(path, EnumSet.of(FileVisitOption.FOLLOW_LINKS), maxDepth,
+					new SimpleFileVisitor<Path>() {
 				@Override
 				public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
 					try {
-						indexDoc(writer, file, attrs.lastModifiedTime().toMillis());
+						if(onlyFiles == null ||
+								Arrays.stream(onlyFiles).anyMatch((ext) -> file.toString().endsWith(ext))) {
+							indexDoc(writer, file, attrs.lastModifiedTime().toMillis());
+						}
 					} catch (@SuppressWarnings("unused") IOException ignore) {
 						ignore.printStackTrace(System.err);
 						// don't index files that can't be read.
@@ -208,6 +321,11 @@ public class IndexFiles implements AutoCloseable {
 	/** Indexes a single document */
 	void indexDoc(IndexWriter writer, Path file, long lastModified) throws IOException {
 		try (InputStream stream = Files.newInputStream(file)) {
+			String aux = this.fileProp.getProperty("onlyTopLines");
+			int topLines = aux != null? Integer.parseInt(aux): Integer.MAX_VALUE;
+			aux = this.fileProp.getProperty("onlyBottomLines");
+			int bottonLines = aux != null? Integer.parseInt(aux): Integer.MAX_VALUE;
+
 			// make a new, empty document
 			Document doc = new Document();
 
@@ -231,10 +349,41 @@ public class IndexFiles implements AutoCloseable {
 			// so that the text of the file is tokenized and indexed, but not stored.
 			// Note that FileReader expects the file to be in UTF-8 encoding.
 			// If that's not the case searching for special characters will fail.
-			doc.add(new TextField("contents",
-					new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))));
 
-			doc.add(new StoredField("contentsStored", stream.readAllBytes()));
+			BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
+			doc.add(new TextField("contents", reader));
+
+			if(topLines != Integer.MAX_VALUE || bottonLines != Integer.MAX_VALUE) {
+				String line = reader.readLine();
+				List<String> lines = new ArrayList<>();
+				String[] lastLines = new String[bottonLines];
+				int i;
+				for (i = 0; i < topLines && line != null && !line.isEmpty(); i++) {
+					lines.add(line);
+					line = reader.readLine();
+				}
+				while (line != null && !line.isEmpty()) {
+					for (i = 0; i < bottonLines && line != null && !line.isEmpty(); i++) {
+						lastLines[i] = line;
+						line = reader.readLine();
+					}
+				}
+				for (int j = 0; j < bottonLines; j++) {
+					aux = lastLines[(i + j) % bottonLines];
+
+					if (aux != null) {
+						lines.add(lastLines[(i + j) % bottonLines]);
+					}
+				}
+				StringBuilder content = new StringBuilder();
+				for (String s : lines) {
+					content.append(s).append('\n');
+				}
+
+				doc.add(new StoredField("contentsStored", content.toString().getBytes()));
+			} else {
+				doc.add(new StoredField("contentsStored", stream.readAllBytes()));
+			}
 
 			doc.add(new StringField("hostname",
 					InetAddress.getLocalHost().getHostName(), Field.Store.YES));
