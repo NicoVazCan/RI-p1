@@ -1,6 +1,7 @@
 package es.udc.fi.ri.nicoedu;
 
 import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
 import org.apache.lucene.index.*;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
@@ -38,10 +39,13 @@ public class WriteIndex {
              IndexReader indexReader = DirectoryReader.open(indexDir);
              PrintStream output = filePath == null? System.out:
                      new PrintStream(Files.newOutputStream(Path.of(filePath)))) {
+            FieldInfos fields = FieldInfos.getMergedFieldInfos(indexReader);
+            Document doc = null;
+            IndexableField fieldDoc;
+            String fieldValue;
 
             for (int i = 0; i < indexReader.numDocs(); i++) {
-                Document doc = null;
-                String fieldValue;
+
 
                 try {
                     doc = indexReader.document(i);
@@ -49,22 +53,27 @@ public class WriteIndex {
                     System.out.println("Graceful message: exception " + e1);
                     e1.printStackTrace();
                 }
+
                 output.println("Documento: " + i);
 
                 if(doc != null) {
-                    for (IndexableField field : doc) {
-                        output.println("\tCampo: " + field.name());
-                        if(field.fieldType().stored()) {
-                            if (field.numericValue() != null) {
-                                fieldValue = String.valueOf(field.numericValue().floatValue());
-                            } else if (field.binaryValue() != null) {
-                                fieldValue = field.binaryValue().toString();
-                            } else {
-                                fieldValue = field.stringValue();
-                            }
+                    for (FieldInfo field : fields) {
+                        fieldDoc = doc.getField(field.name);
+                        output.println("\tCampo: " + field.name);
 
-                            output.println("\t\tValor:");
-                            output.println("\t\t" + fieldValue);
+                        if (fieldDoc != null) {
+                            if(fieldDoc.fieldType().stored()) {
+                                if (fieldDoc.numericValue() != null) {
+                                    fieldValue = String.valueOf(fieldDoc.numericValue().floatValue());
+                                } else if (fieldDoc.binaryValue() != null) {
+                                    fieldValue = fieldDoc.binaryValue().toString();
+                                } else {
+                                    fieldValue = fieldDoc.stringValue();
+                                }
+
+                                output.println("\t\tValor:");
+                                output.println("\t\t" + fieldValue);
+                            }
                         }
                     }
                 }
