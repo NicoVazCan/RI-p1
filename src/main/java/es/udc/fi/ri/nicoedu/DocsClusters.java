@@ -62,11 +62,10 @@ public class DocsClusters {
         * Añadimos un nuevo atributo a la clase Punto con su contructor, getter y
         * una modificación en el toString
         */
-        System.out.println("\nClasificados mediante el algoritmo k-means con "+k+ " clusters:\n");
         List<Punto> puntos = new ArrayList<>();
         SimilarDocs similarDocs = new SimilarDocs();
         String vector;
-        similarDocs.getTopRealVector(indexPath, fieldString, rep, doc, n, false);
+        similarDocs.getTopRealVector(indexPath, fieldString, rep, doc, n);
 
         for (int j = 0; j < similarDocs.topVectors.size(); j++) {
             vector = similarDocs.topVectors.get(j).toString().replace(',', '.');
@@ -74,6 +73,8 @@ public class DocsClusters {
                     similarDocs.docs.get(j).toString());
             puntos.add(p);
         }
+
+        System.out.println("\nClasificados mediante el algoritmo k-means con "+k+ " clusters:\n");
 
         KMeans kmeans = new KMeans();
 

@@ -132,7 +132,7 @@ public class SimilarDocs {
         return vector;
     }
 
-    public void getTopRealVector(String indexPath, String fieldString, Rep rep, int doc, int n, boolean print) {
+    public void getTopRealVector(String indexPath, String fieldString, Rep rep, int doc, int n) {
         try(Directory dir = FSDirectory.open(Paths.get(indexPath));
             DirectoryReader indexReader = DirectoryReader.open(dir)) {
 
@@ -140,9 +140,9 @@ public class SimilarDocs {
             float similar;
             Map<String, Float> tr1 = null, tr2 = null;
             RealVector v1, v2;
+            Set<String> terms = new HashSet<>();
 
             for (int i = 0; (i==doc? ++i: i) < nDocs; i++) {
-                Set<String> terms = new HashSet<>();
 
                 switch (rep) {
                     case tf:
@@ -181,16 +181,19 @@ public class SimilarDocs {
                 }
             }
 
-            if (print) {
-                System.out.println("Documentos similares al de id=" + doc
-                        + " con el campo " + fieldString + " y ruta "
-                        + indexReader.document(doc).get("path") + ":");
-                for (int i = 0; i < scores.size(); i++) {
-                    System.out.println("\t" + (i + 1) + "º documento con id=" + docs.get(i)
-                            + " y ruta " + indexReader.document(doc).get("path")
-                            + " tiene el vector de terminos="
-                            + Arrays.toString(topVectors.get(i).toArray()));
+            System.out.println("Documentos similares al de id=" + doc
+                    + " con el campo " + fieldString + ", ruta "
+                    + indexReader.document(doc).get("path")
+                    + "y vector de terminos="+Arrays.toString(terms.toArray())
+                    + ", ordenados por "+rep+":\n");
+            for (int i = 0; i < scores.size(); i++) {
+                while (topVectors.get(i).getDimension() < terms.size()) {
+                    topVectors.set(i, topVectors.get(i).append(0));
                 }
+                System.out.println("\t" + (i + 1) + "º documento con id=" + docs.get(i)
+                        + " y ruta " + indexReader.document(doc).get("path")
+                        + " tiene el vector de terminos="
+                        + Arrays.toString(topVectors.get(i).toArray()));
             }
 
         } catch (IOException e){
@@ -248,7 +251,7 @@ public class SimilarDocs {
                 "aa aa aa",
                 "aa aa bb",
                 "bb bb aa",
-                "bb bb bb",
+                "bb bb bb cc",
                 "aa aa aa aa",
                 "aa aa aa bb",
                 "aa aa bb bb",
@@ -260,10 +263,10 @@ public class SimilarDocs {
                 "aa aa bb bb bb",
                 "bb bb bb aa aa",
                 "bb bb bb bb aa",
-                "bb bb bb bb bb"
+                "bb bb bb bb bb cc"
         }, indexPath, fieldString);
 
         SimilarDocs similarDocs = new SimilarDocs();
-        similarDocs.getTopRealVector(indexPath, fieldString, rep, doc, n, true);
+        similarDocs.getTopRealVector(indexPath, fieldString, rep, doc, n);
     }
 }
