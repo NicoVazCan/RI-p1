@@ -121,10 +121,10 @@ public class BestTermsInDoc {
                             }
 
                             if(i < top) {
-                                tfs.set(i, tf);
-                                dfs.set(i, df);
-                                idfs.set(i, idf);
-                                tns.set(i, term.utf8ToString());
+                                tfs.add(i, tf);
+                                dfs.add(i, df);
+                                idfs.add(i, idf);
+                                tns.add(i, term.utf8ToString());
                             }
                         } catch (IndexOutOfBoundsException ignore) {
                             tfs.add(tf);

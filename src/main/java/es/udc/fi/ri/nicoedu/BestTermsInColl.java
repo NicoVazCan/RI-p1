@@ -74,8 +74,8 @@ public class BestTermsInColl {
                         for (i = 0; i < top && fs.get(i) < f; i++);
 
                         if(i < top) {
-                            fs.set(i, f);
-                            tns.set(i, term.utf8ToString());
+                            fs.add(i, f);
+                            tns.add(i, term.utf8ToString());
                         }
                     } catch (IndexOutOfBoundsException ignore) {
                         fs.add(f);
