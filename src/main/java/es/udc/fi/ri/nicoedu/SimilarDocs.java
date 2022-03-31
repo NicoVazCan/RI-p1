@@ -20,8 +20,11 @@ import java.util.*;
 enum Rep { bin, tf, tfxidf }
 
 public class SimilarDocs {
+    public List<RealVector> topVectors = new ArrayList<>();
+    public List<Float> scores = new ArrayList<>();
+    public List<Integer> docs = new ArrayList<>();
 
-    static Directory createIndex(String[] values, String spath, String field) throws IOException {
+    static void createIndex(String[] values, String spath, String field) throws IOException {
 
         FSDirectory directory = FSDirectory.open(Paths.get(spath));
 
@@ -42,7 +45,6 @@ public class SimilarDocs {
             addDocument(writer, value, field);
         }
         writer.close();
-        return directory;
     }
 
     /* Indexed, tokenized, stored. */
@@ -130,6 +132,73 @@ public class SimilarDocs {
         return vector;
     }
 
+    public void getTopRealVector(String indexPath, String fieldString, Rep rep, int doc, int n, boolean print) {
+        try(Directory dir = FSDirectory.open(Paths.get(indexPath));
+            DirectoryReader indexReader = DirectoryReader.open(dir)) {
+
+            int nDocs = indexReader.numDocs(), pos;
+            float similar;
+            Map<String, Float> tr1 = null, tr2 = null;
+            RealVector v1, v2;
+
+            for (int i = 0; (i==doc? ++i: i) < nDocs; i++) {
+                Set<String> terms = new HashSet<>();
+
+                switch (rep) {
+                    case tf:
+                        tr1 = getTermFrequencies(indexReader, doc, fieldString, terms);
+                        tr2 = getTermFrequencies(indexReader, i, fieldString, terms);
+                        break;
+
+                    case bin:
+                        tr1 = getTermBin(indexReader, doc, fieldString, terms);
+                        tr2 = getTermBin(indexReader, i, fieldString, terms);
+                        break;
+
+                    case tfxidf:
+                        tr1 = getTfXIdf(indexReader, doc, fieldString, terms);
+                        tr2 = getTfXIdf(indexReader, i, fieldString, terms);
+                        break;
+                }
+
+                v1 = toRealVector(tr1, terms);
+                v2 = toRealVector(tr2, terms);
+                similar = (float) getCosineSimilarity(v1, v2);
+
+                for (pos = 0;
+                     pos < n && pos < scores.size() && scores.get(pos) > similar;
+                     pos++);
+
+
+                scores.add(pos, similar);
+                topVectors.add(pos, v2);
+                docs.add(pos, i);
+
+                if (scores.size()-1 == n) {
+                    scores.remove(n);
+                    topVectors.remove(n);
+                    docs.remove(n);
+                }
+            }
+
+            if (print) {
+                System.out.println("Documentos similares al de id=" + doc
+                        + " con el campo " + fieldString + " y ruta "
+                        + indexReader.document(doc).get("path") + ":");
+                for (int i = 0; i < scores.size(); i++) {
+                    System.out.println("\t" + (i + 1) + "º documento con id=" + docs.get(i)
+                            + " y ruta " + indexReader.document(doc).get("path")
+                            + " tiene el vector de terminos="
+                            + Arrays.toString(topVectors.get(i).toArray()));
+                }
+            }
+
+        } catch (IOException e){
+            System.out.println("Graceful message: exception "+ e);
+            e.printStackTrace();
+        }
+    }
+
     public static void main(String[] args) throws IOException {
         String usage = "java SimilarDocs <-index INDEX_PATH> <-field field>" +
                         "<-doc doc> <-top n> <-rep bin|tf|tfxidf>";
@@ -171,74 +240,30 @@ public class SimilarDocs {
         }
 
         createIndex(new String[] {
-                "aa aa bb bb cc cc",
-                "aa aa aa bb bb cc",
-                "aa aa aa bb bb bb",
-                "aa bb bb bb cc cc"}, indexPath, fieldString);
+                "aa",
+                "bb",
+                "aa aa",
+                "aa bb",
+                "bb bb",
+                "aa aa aa",
+                "aa aa bb",
+                "bb bb aa",
+                "bb bb bb",
+                "aa aa aa aa",
+                "aa aa aa bb",
+                "aa aa bb bb",
+                "bb bb bb aa",
+                "bb bb bb bb",
+                "aa aa aa aa aa",
+                "aa aa aa aa bb",
+                "aa aa aa bb bb",
+                "aa aa bb bb bb",
+                "bb bb bb aa aa",
+                "bb bb bb bb aa",
+                "bb bb bb bb bb"
+        }, indexPath, fieldString);
 
-        try(Directory dir = FSDirectory.open(Paths.get(indexPath));
-            DirectoryReader indexReader = DirectoryReader.open(dir)) {
-
-            int nDocs = indexReader.numDocs(), pos;
-            float similar;
-            Map<String, Float> tr1 = null, tr2 = null;
-            RealVector v1, v2;
-            List<RealVector> topDocs = new ArrayList<>();
-            List<Float> scores = new ArrayList<>();
-            List<Integer> docs = new ArrayList<>();
-
-            for (int i = 0; (i==doc? ++i: i) < nDocs; i++) {
-                Set<String> terms = new HashSet<>();
-
-                switch (rep) {
-                    case tf:
-                        tr1 = getTermFrequencies(indexReader, doc, fieldString, terms);
-                        tr2 = getTermFrequencies(indexReader, i, fieldString, terms);
-                        break;
-
-                    case bin:
-                        tr1 = getTermBin(indexReader, doc, fieldString, terms);
-                        tr2 = getTermBin(indexReader, i, fieldString, terms);
-                        break;
-
-                    case tfxidf:
-                        tr1 = getTfXIdf(indexReader, doc, fieldString, terms);
-                        tr2 = getTfXIdf(indexReader, i, fieldString, terms);
-                        break;
-                }
-                
-                v1 = toRealVector(tr1, terms);
-                v2 = toRealVector(tr2, terms);
-                similar = (float) getCosineSimilarity(v1, v2);
-
-                for (pos = 0;
-                     pos < n && pos < scores.size() && scores.get(pos) > similar;
-                     pos++);
-
-
-                scores.add(pos, similar);
-                topDocs.add(pos, v2);
-                docs.add(pos, i);
-
-                if (scores.size()-1 == n) {
-                    scores.remove(n);
-                    topDocs.remove(n);
-                    docs.remove(n);
-                }
-            }
-            System.out.println("Documentos similares al de id="+doc
-                    +" con el campo "+fieldString+" y ruta "
-                    +indexReader.document(doc).get("path")+":");
-            for (int i = 0; i < scores.size(); i++) {
-                System.out.println("\t"+(i+1)+"º documento con id="+docs.get(i)
-                        + " y ruta "+indexReader.document(doc).get("path")
-                        + " tiene el vector de terminos="
-                        + Arrays.toString(topDocs.get(i).toArray()));
-            }
-
-        } catch (IOException e){
-            System.out.println("Graceful message: exception "+ e);
-            e.printStackTrace();
-        }
+        SimilarDocs similarDocs = new SimilarDocs();
+        similarDocs.getTopRealVector(indexPath, fieldString, rep, doc, n, true);
     }
 }

@@ -1,47 +1,26 @@
 package es.udc.fi.ri.nicoedu;
 
-import org.apache.commons.math3.linear.RealVector;
-import org.apache.lucene.index.CorruptIndexException;
-import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.FSDirectory;
-
-import java.io.IOException;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-
 import kmeans.Cluster;
 import kmeans.KMeans;
 import kmeans.KMeansResultado;
 import kmeans.Punto;
 
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
 public class DocsClusters {
-    private DocsClusters(){
-    }
-    private static double getCosineSimilarity(RealVector v1, RealVector v2){
-        return (v1.dotProduct(v2)) / (v1.getNorm() * v2.getNorm() );
-    }
-    public static void main(String[] args) throws IOException{
+    public static void main(String[] args) {
         String usage = "java DocsClusters <-index INDEX_PATH> <-field field>" +
                         "<-doc doc> <-top n> <-rep bin|tf|tfxidf>";
 
         String indexPath = null;
         String fieldString = null;
-        String doc = null;
+        Integer doc = null;
         int n = 0;
-        String rep = null;
+        Rep rep = null;
         int k = 0;
-        boolean docExists = false;
 
-        Directory dir = null;
-        DirectoryReader indexReader = null;
-
-        if(args.length != 12){
-            System.err.println("Usage: " + usage);
-            System.exit(1);
-        }
         for (int i = 0; i < args.length; i++){
             if ("-index".equals(args[i])){
                 indexPath = args[i+1];
@@ -50,28 +29,28 @@ public class DocsClusters {
                 fieldString = args[i+1];
                 i++;
             }else if ("-doc".equals(args[i])){
-                doc = args[i+1];
+                doc = Integer.parseInt(args[i+1]);
                 i++;
             }else if ("-top".equals(args[i])){
                 n = Integer.parseInt(args[i+1]);
                 i++;
             }else if ("-rep".equals(args[i])){
-                rep = args[i+1];
+                rep = Rep.valueOf(args[i+1]);
                 i++;
             }else if ("-k".equals(args[i])){
                 k = Integer.parseInt(args[i+1]);
                 i++;
             }
         }
-        try {
-            dir = FSDirectory.open(Paths.get(indexPath));
-            indexReader = DirectoryReader.open(dir);
-        } catch (CorruptIndexException e){
-            System.out.println("Graceful message: exception " + e);
-            e.printStackTrace();
-        }catch (IOException e) {
-            System.out.println("Graceful message: exception " + e);
-            e.printStackTrace();
+
+        if(indexPath == null ||
+                fieldString == null ||
+                doc == null ||
+                n == 0 ||
+                rep == null ||
+                k == 0){
+            System.err.println("Usage: " + usage);
+            System.exit(1);
         }
 
         Date start = new Date();
@@ -84,10 +63,15 @@ public class DocsClusters {
         * una modificación en el toString
         */
         System.out.println("\nClasificados mediante el algoritmo k-means con "+k+ " clusters:\n");
-        List<Punto> puntos = new ArrayList<Punto>();
+        List<Punto> puntos = new ArrayList<>();
+        SimilarDocs similarDocs = new SimilarDocs();
+        String vector;
+        similarDocs.getTopRealVector(indexPath, fieldString, rep, doc, n, false);
 
-        for (DocsSimilarity colect : collection){
-            Punto p = new Punto(String.valueOf(colect.similarity), colect.name);
+        for (int j = 0; j < similarDocs.topVectors.size(); j++) {
+            vector = similarDocs.topVectors.get(j).toString().replace(',', '.');
+            Punto p = new Punto(vector.substring(1,vector.length()-1).split(";"),
+                    similarDocs.docs.get(j).toString());
             puntos.add(p);
         }
 
