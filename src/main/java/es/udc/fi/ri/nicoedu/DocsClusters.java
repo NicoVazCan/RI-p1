@@ -1,75 +1,111 @@
 package es.udc.fi.ri.nicoedu;
 
+import org.apache.commons.math3.linear.RealVector;
+import org.apache.lucene.index.CorruptIndexException;
 import org.apache.lucene.index.DirectoryReader;
-import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
 import java.io.IOException;
-import java.io.PrintStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
 
-enum Rep { bin, tf, tfxidf; }
+import kmeans.Cluster;
+import kmeans.KMeans;
+import kmeans.KMeansResultado;
+import kmeans.Punto;
 
 public class DocsClusters {
-    public static void main(String[] args) {
-        String usage = "java org.apache.lucene.demo.IndexFiles"
-                + " [-index INDEX_PATH] [-docID NºDOC] [-field FIELD_NAME]\n"
-                + " [-top NºTERM] [-order tf|df|idflog10|\"tf x idflog10\"]\n"
-                + " [-outputfile FILE_PATH]\n\n";
-        String indexPath = null, filePath = null, field = null;
-        Integer docID = null, top = null, k = null;
-        Rep rep = null;
+    private DocsClusters(){
+    }
+    private static double getCosineSimilarity(RealVector v1, RealVector v2){
+        return (v1.dotProduct(v2)) / (v1.getNorm() * v2.getNorm() );
+    }
+    public static void main(String[] args) throws IOException{
+        String usage = "java DocsClusters <-index INDEX_PATH> <-field field>" +
+                        "<-doc doc> <-top n> <-rep bin|tf|tfxidf>";
 
-        for (int i = 0; i < args.length; i++) {
-            switch (args[i]) {
-                case "-index":
-                    indexPath = args[++i];
-                    break;
-                case "-docID":
-                    docID = Integer.parseInt(args[++i]);
-                    break;
-                case "-field":
-                    field = args[++i];
-                    break;
-                case "-top":
-                    top = Integer.parseInt(args[++i]);
-                    break;
-                case "-rep":
-                    rep = Rep.valueOf(args[++i]);
-                    break;
-                case "-k":
-                    k = Integer.parseInt(args[++i]);
-                    break;
-                case "-outputfile":
-                    filePath = args[++i];
-                    break;
-                default:
-                    throw new IllegalArgumentException("unknown parameter " + args[i]);
-            }
-        }
+        String indexPath = null;
+        String fieldString = null;
+        String doc = null;
+        int n = 0;
+        String rep = null;
+        int k = 0;
+        boolean docExists = false;
 
-        if (indexPath == null ||
-                docID == null ||
-                field == null ||
-                top == null ||
-                rep == null ||
-                k == null
-        ) {
+        Directory dir = null;
+        DirectoryReader indexReader = null;
+
+        if(args.length != 12){
             System.err.println("Usage: " + usage);
             System.exit(1);
         }
-
-        try (Directory indexDir = FSDirectory.open(Path.of(indexPath));
-             IndexReader indexReader = DirectoryReader.open(indexDir);
-             PrintStream output = filePath == null? System.out:
-                     new PrintStream(Files.newOutputStream(Path.of(filePath)))) {
-
-        } catch (
-        IOException e) {
-            e.printStackTrace();
-            System.exit(1);
+        for (int i = 0; i < args.length; i++){
+            if ("-index".equals(args[i])){
+                indexPath = args[i+1];
+                i++;
+            }else if ("-field".equals(args[i])){
+                fieldString = args[i+1];
+                i++;
+            }else if ("-doc".equals(args[i])){
+                doc = args[i+1];
+                i++;
+            }else if ("-top".equals(args[i])){
+                n = Integer.parseInt(args[i+1]);
+                i++;
+            }else if ("-rep".equals(args[i])){
+                rep = args[i+1];
+                i++;
+            }else if ("-k".equals(args[i])){
+                k = Integer.parseInt(args[i+1]);
+                i++;
+            }
         }
+        try {
+            dir = FSDirectory.open(Paths.get(indexPath));
+            indexReader = DirectoryReader.open(dir);
+        } catch (CorruptIndexException e){
+            System.out.println("Graceful message: exception " + e);
+            e.printStackTrace();
+        }catch (IOException e) {
+            System.out.println("Graceful message: exception " + e);
+            e.printStackTrace();
+        }
+
+        Date start = new Date();
+        /*
+        * K-means implementado por xetorthio en Github
+        *
+        * https://github.com/xetorthio/kmeans
+        *
+        * Añadimos un nuevo atributo a la clase Punto con su contructor, getter y
+        * una modificación en el toString
+        */
+        System.out.println("\nClasificados mediante el algoritmo k-means con "+k+ " clusters:\n");
+        List<Punto> puntos = new ArrayList<Punto>();
+
+        for (DocsSimilarity colect : collection){
+            Punto p = new Punto(String.valueOf(colect.similarity), colect.name);
+            puntos.add(p);
+        }
+
+        KMeans kmeans = new KMeans();
+
+        KMeansResultado resultado = kmeans.calcular(puntos, k);
+
+        int i = 0;
+        for (Cluster cluster : resultado.getClusters()){
+            i++;
+            System.out.println("-- Cluster "+ i + "--\n");
+            for (Punto punto : cluster.getPuntos()){
+                System.out.println(punto.toString() + "\n");
+            }
+            System.out.println("\n");
+        }
+        Date end = new Date();
+        System.out.println(end.getTime() - start.getTime() + " total milliseconds");
+
     }
 }
