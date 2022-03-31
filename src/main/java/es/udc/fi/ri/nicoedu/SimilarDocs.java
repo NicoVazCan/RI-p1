@@ -17,6 +17,8 @@ import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.*;
 
+enum Rep { bin, tf, tfxidf }
+
 public class SimilarDocs {
 
     static Directory createIndex(String[] values, String spath, String field) throws IOException {
