@@ -120,7 +120,7 @@ public class IndexFiles implements AutoCloseable {
 	public static void main(String[] args) throws Exception {
 		String usage = "java org.apache.lucene.demo.IndexFiles"
 				+ " [-index INDEX_PATH] [-docs DOCS_PATH] [-update] [-knn_dict DICT_PATH] \n"
-				+ "[-openmode append|create|create_append] [-numThreads Nº] [-deep Nº] \n\n"
+				+ "[-openmode append|create|create_append] [-numThreads Nº] [-deep Nº] [-termVector]\n\n"
 				+ "This indexes the documents in DOCS_PATH, creating a Lucene index"
 				+ "in INDEX_PATH that can be searched with SearchFiles\n"
 				+ "IF DICT_PATH contains a KnnVector dictionary, the index will also support KnnVector search";
