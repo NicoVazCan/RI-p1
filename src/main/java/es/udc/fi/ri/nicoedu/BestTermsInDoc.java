@@ -80,7 +80,7 @@ public class BestTermsInDoc {
              PrintStream output = filePath == null? System.out:
                      new PrintStream(Files.newOutputStream(Path.of(filePath)))) {
             Terms terms = MultiTerms.getTerms(indexReader, field);
-            int di, i = 0;
+            int di, i;
             TermsEnum te;
             BytesRef term;
             int tf, df, N = indexReader.getDocCount(field);
@@ -96,7 +96,7 @@ public class BestTermsInDoc {
                 while ((term = te.next()) != null) {
                     PostingsEnum posting = MultiTerms.getTermPostingsEnum(indexReader,field, term);
                     di = posting.advance(docID);
-
+                    i = 0;
 
                     if (di == docID) {
                         tf = posting.freq();
