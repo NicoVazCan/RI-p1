@@ -40,6 +40,8 @@ public class DocsClusters {
             }else if ("-k".equals(args[i])){
                 k = Integer.parseInt(args[i+1]);
                 i++;
+            }else {
+                throw new IllegalArgumentException("unknown parameter " + args[i]);
             }
         }
 
