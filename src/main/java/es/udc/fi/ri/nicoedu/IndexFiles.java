@@ -51,6 +51,21 @@ import java.util.concurrent.TimeUnit;
 public class IndexFiles implements AutoCloseable {
 	static final String KNN_DICT = "knn-dict";
 
+	public static final FieldType TYPE_STORED = new FieldType();
+
+	static final IndexOptions options = IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS;
+
+	private static boolean termVector = false;
+
+	static {
+		TYPE_STORED.setIndexOptions(options);
+		TYPE_STORED.setTokenized(true);
+		TYPE_STORED.setStored(true);
+		TYPE_STORED.setStoreTermVectors(true);
+		TYPE_STORED.setStoreTermVectorPositions(true);
+		TYPE_STORED.freeze();
+	}
+
 	// Calculates embedding vectors for KnnVector search
 	private final DemoEmbeddings demoEmbeddings;
 	private final KnnVectorDict vectorDict;
@@ -156,6 +171,9 @@ public class IndexFiles implements AutoCloseable {
 					break;
 				case "-deep":
 					maxDepth = Integer.parseInt(args[++i]);
+					break;
+				case "-termVector":
+					termVector = true;
 					break;
 				default:
 					throw new IllegalArgumentException("unknown parameter " + args[i]);
@@ -387,9 +405,13 @@ public class IndexFiles implements AutoCloseable {
 					content.append(s).append('\n');
 				}
 
-				doc.add(new StoredField("contentsStored", content.toString().getBytes()));
+				doc.add(termVector?
+						new Field("contentsStored", content.toString(), TYPE_STORED):
+						new TextField("contentsStored", content.toString(), Field.Store.YES));
 			} else {
-				doc.add(new StoredField("contentsStored", stream.readAllBytes()));
+				doc.add(termVector?
+						new Field("contentsStored", new String(stream.readAllBytes()), TYPE_STORED):
+						new TextField("contentsStored", new String(stream.readAllBytes()), Field.Store.YES));
 			}
 
 			doc.add(new StringField("hostname",

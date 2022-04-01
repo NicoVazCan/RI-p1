@@ -2,12 +2,6 @@ package es.udc.fi.ri.nicoedu;
 
 import org.apache.commons.math3.linear.ArrayRealVector;
 import org.apache.commons.math3.linear.RealVector;
-import org.apache.lucene.analysis.Analyzer;
-import org.apache.lucene.analysis.core.SimpleAnalyzer;
-import org.apache.lucene.document.Document;
-import org.apache.lucene.document.Field;
-import org.apache.lucene.document.FieldType;
-import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.*;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
@@ -24,51 +18,6 @@ public class SimilarDocs {
     public List<Float> scores = new ArrayList<>();
     public List<Integer> docs = new ArrayList<>();
 
-    static void createIndex(String[] values, String spath, String field) throws IOException {
-
-        FSDirectory directory = FSDirectory.open(Paths.get(spath));
-
-        /*
-         * File-based Directory implementation that uses mmap for reading, and
-         * FSDirectory.FSIndexOutput for writing.
-         *
-         * RAMDirectory uses inefficient synchronization and is discouraged in lucene
-         * 8.x in favor of MMapDirectory and it will be removed in future versions of
-         * Lucene.
-         */
-
-        Analyzer analyzer = new SimpleAnalyzer();
-        IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
-        iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
-        IndexWriter writer = new IndexWriter(directory, iwc);
-        for (String value : values) {
-            addDocument(writer, value, field);
-        }
-        writer.close();
-    }
-
-    /* Indexed, tokenized, stored. */
-    public static final FieldType TYPE_STORED = new FieldType();
-
-    static final IndexOptions options = IndexOptions.DOCS_AND_FREQS_AND_POSITIONS_AND_OFFSETS;
-
-    static {
-        TYPE_STORED.setIndexOptions(options);
-        TYPE_STORED.setTokenized(true);
-        TYPE_STORED.setStored(true);
-        TYPE_STORED.setStoreTermVectors(true);
-        TYPE_STORED.setStoreTermVectorPositions(true);
-        TYPE_STORED.freeze();
-    }
-
-    static void addDocument(IndexWriter writer, String content, String fieldName) throws IOException {
-        Document doc = new Document();
-        Field field = new Field(fieldName, content, TYPE_STORED);
-        doc.add(field);
-        doc.add(new StringField("path", "/test.txt", Field.Store.YES));
-        writer.addDocument(doc);
-    }
-
     static double getCosineSimilarity(RealVector v1, RealVector v2) {
         return (v1.dotProduct(v2)) / (v1.getNorm() * v2.getNorm());
     }
@@ -84,7 +33,6 @@ public class SimilarDocs {
             String term = text.utf8ToString();
             float freq = (float) termsEnum.totalTermFreq();
             frequencies.put(term, freq);
-            terms.add(term);
         }
         return frequencies;
     }
@@ -100,7 +48,6 @@ public class SimilarDocs {
             String term = text.utf8ToString();
 
             frequencies.put(term, 1F);
-            terms.add(term);
         }
         return frequencies;
     }
@@ -117,7 +64,6 @@ public class SimilarDocs {
             frequencies.put(term,
                     (float) (termsEnum.totalTermFreq()*Math.log10(((float) reader.getDocCount(field))/
                             ((float) termsEnum.docFreq()))));
-            terms.add(term);
         }
         return frequencies;
     }
@@ -140,7 +86,14 @@ public class SimilarDocs {
             float similar;
             Map<String, Float> tr1 = null, tr2 = null;
             RealVector v1, v2;
+
             Set<String> terms = new HashSet<>();
+            TermsEnum te = MultiTerms.getTerms(indexReader, fieldString).iterator();
+            BytesRef term;
+
+            while ((term = te.next()) != null) {
+                terms.add(term.utf8ToString());
+            }
 
             for (int i = 0; (i==doc? ++i: i) < nDocs; i++) {
 
@@ -187,9 +140,6 @@ public class SimilarDocs {
                     + "y vector de terminos="+Arrays.toString(terms.toArray())
                     + ", ordenados por "+rep+":\n");
             for (int i = 0; i < scores.size(); i++) {
-                while (topVectors.get(i).getDimension() < terms.size()) {
-                    topVectors.set(i, topVectors.get(i).append(0));
-                }
                 System.out.println("\t" + (i + 1) + "º documento con id=" + docs.get(i)
                         + " y ruta " + indexReader.document(doc).get("path")
                         + " tiene el vector de terminos="
@@ -202,7 +152,7 @@ public class SimilarDocs {
         }
     }
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) {
         String usage = "java SimilarDocs <-index INDEX_PATH> <-field field>" +
                         "<-doc doc> <-top n> <-rep bin|tf|tfxidf>";
         String indexPath = null;
@@ -241,30 +191,6 @@ public class SimilarDocs {
             System.err.println("Usage: " + usage);
             System.exit(1);
         }
-
-        createIndex(new String[] {
-                "aa",
-                "bb",
-                "aa aa",
-                "aa bb",
-                "bb bb",
-                "aa aa aa",
-                "aa aa bb",
-                "bb bb aa",
-                "bb bb bb cc",
-                "aa aa aa aa",
-                "aa aa aa bb",
-                "aa aa bb bb",
-                "bb bb bb aa",
-                "bb bb bb bb",
-                "aa aa aa aa aa",
-                "aa aa aa aa bb",
-                "aa aa aa bb bb",
-                "aa aa bb bb bb",
-                "bb bb bb aa aa",
-                "bb bb bb bb aa",
-                "bb bb bb bb bb cc"
-        }, indexPath, fieldString);
 
         SimilarDocs similarDocs = new SimilarDocs();
         similarDocs.getTopRealVector(indexPath, fieldString, rep, doc, n);
