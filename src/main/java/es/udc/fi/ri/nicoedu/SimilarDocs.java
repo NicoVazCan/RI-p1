@@ -95,26 +95,36 @@ public class SimilarDocs {
                 terms.add(term.utf8ToString());
             }
 
+            switch (rep) {
+                case tf:
+                    tr1 = getTermFrequencies(indexReader, doc, fieldString, terms);
+                    break;
+
+                case bin:
+                    tr1 = getTermBin(indexReader, doc, fieldString, terms);
+                    break;
+
+                case tfxidf:
+                    tr1 = getTfXIdf(indexReader, doc, fieldString, terms);
+                    break;
+            }
+            v1 = toRealVector(tr1, terms);
+
             for (int i = 0; (i==doc? ++i: i) < nDocs; i++) {
 
                 switch (rep) {
                     case tf:
-                        tr1 = getTermFrequencies(indexReader, doc, fieldString, terms);
                         tr2 = getTermFrequencies(indexReader, i, fieldString, terms);
                         break;
 
                     case bin:
-                        tr1 = getTermBin(indexReader, doc, fieldString, terms);
                         tr2 = getTermBin(indexReader, i, fieldString, terms);
                         break;
 
                     case tfxidf:
-                        tr1 = getTfXIdf(indexReader, doc, fieldString, terms);
                         tr2 = getTfXIdf(indexReader, i, fieldString, terms);
                         break;
                 }
-
-                v1 = toRealVector(tr1, terms);
                 v2 = toRealVector(tr2, terms);
                 similar = (float) getCosineSimilarity(v1, v2);
 
@@ -134,10 +144,11 @@ public class SimilarDocs {
                 }
             }
 
-            System.out.println("Documentos similares al de id=" + doc
+            System.out.println("Vector de terminos de la coleccion="+Arrays.toString(terms.toArray()) + "\n"
+                    + "Documentos similares al de id=" + doc
                     + " con el campo " + fieldString + ", ruta "
                     + indexReader.document(doc).get("path")
-                    + "y vector de terminos="+Arrays.toString(terms.toArray())
+                    + "y vector de terminos="+Arrays.toString(v1.toArray())
                     + ", ordenados por "+rep+":\n");
             for (int i = 0; i < scores.size(); i++) {
                 System.out.println("\t" + (i + 1) + "º documento con id=" + docs.get(i)
